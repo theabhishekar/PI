@@ -146,11 +146,13 @@ async function startServer() {
     }
 
     const clientOrigin = req.query.origin as string;
-    const baseOrigin = clientOrigin || process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    const redirectUri = `${baseOrigin}/auth/google/callback`;
+    const backendOrigin = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     
-    // Pass origin securely in state so we can reconstruct the exact redirect URI on the callback
-    const state = Buffer.from(JSON.stringify({ origin: baseOrigin })).toString('base64');
+    // Google only allows Web URIs (https) for Web Client Types.
+    const redirectUri = `${backendOrigin}/auth/google/callback`;
+    
+    // Pass the actual client origin (e.g., com.pi.app://) securely in state
+    const state = Buffer.from(JSON.stringify({ origin: clientOrigin || backendOrigin })).toString('base64');
 
     const params = new URLSearchParams({
       client_id: customClientId,
@@ -196,7 +198,9 @@ async function startServer() {
           console.warn("Failed to parse state", e);
         }
       }
-      const redirectUri = `${baseOrigin}/auth/google/callback`;
+      
+      const backendOrigin = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const redirectUri = `${backendOrigin}/auth/google/callback`;
 
       // Exchange code for tokens
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
