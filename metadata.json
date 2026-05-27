@@ -1,0 +1,1 @@
+{"name":"Team Task Management","description":"Full-stack mobile-responsive application for team management, allowing Admins to assign tasks to Managers and share tasks via WhatsApp.","requestFramePermissions":["microphone"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

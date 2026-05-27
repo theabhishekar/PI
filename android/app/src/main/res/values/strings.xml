@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PI</string>
+    <string name="title_activity_main">PI</string>
+    <string name="package_name">com.pi.app</string>
+    <string name="custom_url_scheme">com.pi.app</string>
+</resources>
