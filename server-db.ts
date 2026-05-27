@@ -1,20 +1,9 @@
-import fs from 'fs';
-import path from 'path';
+import 'dotenv/config';
 import crypto from 'crypto';
+import pg from 'pg';
 import { User, Task, UserRole } from './src/types';
 
-const DB_DIR = path.join(process.cwd(), 'data');
-const DB_FILE = path.join(DB_DIR, 'db.json');
-
-interface UserRecord extends User {
-  passwordHash: string;
-  salt: string;
-}
-
-interface DatabaseSchema {
-  users: UserRecord[];
-  tasks: Task[];
-}
+const { Pool } = pg;
 
 // Simple secure password hashing utilizing native Node crypto module (unbreakable PBKDF2)
 export function hashPassword(password: string, salt: string): string {
@@ -26,129 +15,108 @@ export function generateSalt(): string {
 }
 
 class Database {
-  private data: DatabaseSchema = { users: [], tasks: [] };
+  private pool: pg.Pool;
 
   constructor() {
-    this.init();
-  }
-
-  private init() {
-    if (!fs.existsSync(DB_DIR)) {
-      fs.mkdirSync(DB_DIR, { recursive: true });
-    }
-
-    if (fs.existsSync(DB_FILE)) {
-      try {
-        const raw = fs.readFileSync(DB_FILE, 'utf8');
-        this.data = JSON.parse(raw);
-        // Ensure properties exist
-        if (!this.data.users) this.data.users = [];
-        if (!this.data.tasks) this.data.tasks = [];
-      } catch (err) {
-        console.error('Error reading database, creating fresh:', err);
-        this.seedDefaultAdmin();
+    this.pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
       }
+    });
+  }
+
+  public async init() {
+    console.log('Initializing PostgreSQL database schema...');
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(255) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        "whatsApp" VARCHAR(50),
+        salt VARCHAR(255) NOT NULL,
+        "passwordHash" VARCHAR(255) NOT NULL
+      );
+    `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id VARCHAR(255) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        "assignedTo" VARCHAR(255),
+        "assignedToName" VARCHAR(255),
+        "whatsApp" VARCHAR(50),
+        "createdBy" VARCHAR(255) NOT NULL,
+        "creatorRole" VARCHAR(50) NOT NULL,
+        "scheduledDate" VARCHAR(255),
+        "createdAt" VARCHAR(255) NOT NULL,
+        "updatedAt" VARCHAR(255) NOT NULL
+      );
+    `);
+
+    // Seed default admin if no users exist
+    const { rows } = await this.pool.query('SELECT COUNT(*) FROM users');
+    if (parseInt(rows[0].count, 10) === 0) {
+      const salt = generateSalt();
+      const adminId = 'admin-' + crypto.randomUUID();
+      await this.pool.query(
+        'INSERT INTO users (id, email, name, role, "whatsApp", salt, "passwordHash") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [adminId, 'admin@team.com', 'Super Admin', 'admin', '+1234567890', salt, hashPassword('admin123', salt)]
+      );
+      console.log('Database initialized and seeded with Super Admin credentials successfully.');
     } else {
-      this.seedDefaultAdmin();
-    }
-  }
-
-  private seedDefaultAdmin() {
-    const salt = generateSalt();
-    const adminRecord: UserRecord = {
-      id: 'admin-' + crypto.randomUUID(),
-      email: 'admin@team.com',
-      name: 'Super Admin',
-      role: 'admin',
-      whatsApp: '+1234567890',
-      salt,
-      passwordHash: hashPassword('admin123', salt)
-    };
-    
-    this.data = {
-      users: [adminRecord],
-      tasks: []
-    };
-    this.save();
-    console.log('Database initialized and seeded with Super Admin credentials successfully.');
-  }
-
-  private save() {
-    try {
-      const tempFile = DB_FILE + '.tmp';
-      fs.writeFileSync(tempFile, JSON.stringify(this.data, null, 2), 'utf8');
-      fs.renameSync(tempFile, DB_FILE);
-    } catch (err) {
-      console.error('Failed to write database file:', err);
+      console.log('Database already initialized.');
     }
   }
 
   // User APIs
-  public getUsers(): User[] {
-    return this.data.users.map(({ id, email, name, role, whatsApp }) => ({
-      id, email, name, role, whatsApp
-    }));
+  public async getUsers(): Promise<User[]> {
+    const { rows } = await this.pool.query('SELECT id, email, name, role, "whatsApp" FROM users');
+    return rows;
   }
 
-  public findUserById(id: string): User | undefined {
-    const record = this.data.users.find(u => u.id === id);
-    if (!record) return undefined;
-    return {
-      id: record.id,
-      email: record.email,
-      name: record.name,
-      role: record.role,
-      whatsApp: record.whatsApp
-    };
+  public async findUserById(id: string): Promise<User | undefined> {
+    const { rows } = await this.pool.query('SELECT id, email, name, role, "whatsApp" FROM users WHERE id = $1', [id]);
+    return rows[0];
   }
 
-  public findUserByEmail(email: string): UserRecord | undefined {
-    return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  public async findUserByEmail(email: string): Promise<any | undefined> {
+    const { rows } = await this.pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    return rows[0];
   }
 
-  public createUser(email: string, name: string, role: UserRole, whatsApp: string, passwordPlain: string): User {
+  public async createUser(email: string, name: string, role: UserRole, whatsApp: string, passwordPlain: string): Promise<User> {
     const emailLower = email.toLowerCase();
-    const existing = this.data.users.find(u => u.email.toLowerCase() === emailLower);
+    const existing = await this.findUserByEmail(emailLower);
     if (existing) {
       throw new Error('User with this email already exists.');
     }
 
     const salt = generateSalt();
     const id = 'user-' + crypto.randomUUID();
-    const newRecord: UserRecord = {
-      id,
-      email: emailLower,
-      name,
-      role,
-      whatsApp,
-      salt,
-      passwordHash: hashPassword(passwordPlain, salt)
-    };
+    const passwordHash = hashPassword(passwordPlain, salt);
 
-    this.data.users.push(newRecord);
-    this.save();
+    await this.pool.query(
+      'INSERT INTO users (id, email, name, role, "whatsApp", salt, "passwordHash") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, emailLower, name, role, whatsApp, salt, passwordHash]
+    );
 
-    return {
-      id,
-      email: emailLower,
-      name,
-      role,
-      whatsApp
-    };
+    return { id, email: emailLower, name, role, whatsApp };
   }
 
-  public findOrCreateGoogleUser(email: string, name: string): User {
+  public async findOrCreateGoogleUser(email: string, name: string): Promise<User> {
     const emailLower = email.toLowerCase();
-    const existing = this.data.users.find(u => u.email.toLowerCase() === emailLower);
+    const existing = await this.findUserByEmail(emailLower);
     
-    // Determine role based on user request (theabhishekar@gmail.com is Admin)
     const role: UserRole = emailLower === 'theabhishekar@gmail.com' ? 'admin' : 'manager';
 
     if (existing) {
-      // Ensure the role is updated if it matches request email but role was not admin
       if (existing.role !== role) {
+        await this.pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, existing.id]);
         existing.role = role;
-        this.save();
       }
       return {
         id: existing.id,
@@ -159,113 +127,100 @@ class Database {
       };
     }
 
-    // Create a new User
     const salt = generateSalt();
     const id = 'google-' + crypto.randomUUID();
-    const newRecord: UserRecord = {
-      id,
-      email: emailLower,
-      name: name || 'Google User',
-      role,
-      whatsApp: '+0000000000', // Default placeholder WhatsApp for newly joined Google users
-      salt,
-      passwordHash: hashPassword(crypto.randomBytes(32).toString('hex'), salt)
-    };
+    const whatsApp = '+0000000000';
+    const passwordHash = hashPassword(crypto.randomBytes(32).toString('hex'), salt);
 
-    this.data.users.push(newRecord);
-    this.save();
+    await this.pool.query(
+      'INSERT INTO users (id, email, name, role, "whatsApp", salt, "passwordHash") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, emailLower, name || 'Google User', role, whatsApp, salt, passwordHash]
+    );
 
-    return {
-      id,
-      email: emailLower,
-      name: newRecord.name,
-      role: newRecord.role,
-      whatsApp: newRecord.whatsApp
-    };
+    return { id, email: emailLower, name: name || 'Google User', role, whatsApp };
   }
 
-  public updateUser(id: string, name?: string, whatsApp?: string) {
-    const user = this.data.users.find(u => u.id === id);
-    if (!user) throw new Error("User not found");
-    if (name) user.name = name;
-    if (whatsApp) user.whatsApp = whatsApp;
-    this.save();
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      whatsApp: user.whatsApp
-    };
-  }
-
-  public deleteUser(id: string) {
-    // Admins cannot delete themselves
-    const originalLength = this.data.users.length;
-    this.data.users = this.data.users.filter(u => u.id !== id);
-    if (this.data.users.length !== originalLength) {
-      this.save();
+  public async updateUser(id: string, name?: string, whatsApp?: string): Promise<User> {
+    let query = 'UPDATE users SET ';
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (name) {
+      query += `name = $${paramIndex++}, `;
+      params.push(name);
+    }
+    if (whatsApp) {
+      query += `"whatsApp" = $${paramIndex++}, `;
+      params.push(whatsApp);
+    }
+    
+    if (params.length > 0) {
+      query = query.slice(0, -2) + ` WHERE id = $${paramIndex} RETURNING id, email, name, role, "whatsApp"`;
+      params.push(id);
+      const { rows } = await this.pool.query(query, params);
+      if (rows.length === 0) throw new Error("User not found");
+      return rows[0];
+    } else {
+      const user = await this.findUserById(id);
+      if (!user) throw new Error("User not found");
+      return user;
     }
   }
 
+  public async deleteUser(id: string) {
+    await this.pool.query('DELETE FROM users WHERE id = $1', [id]);
+  }
+
   // Task APIs
-  public getTasks(): Task[] {
-    return this.data.tasks;
+  public async getTasks(): Promise<Task[]> {
+    const { rows } = await this.pool.query('SELECT * FROM tasks');
+    return rows;
   }
 
-  public findTaskById(id: string): Task | undefined {
-    return this.data.tasks.find(t => t.id === id);
+  public async findTaskById(id: string): Promise<Task | undefined> {
+    const { rows } = await this.pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    return rows[0];
   }
 
-  public createTask(title: string, description: string, assignedTo: string | null, createdBy: string, creatorRole: UserRole, scheduledDate: string): Task {
-    // Find manager if assigned
+  public async createTask(title: string, description: string, assignedTo: string | null, createdBy: string, creatorRole: UserRole, scheduledDate: string): Promise<Task> {
     let assignedToName: string | null = null;
     let whatsApp: string | null = null;
 
     if (assignedTo) {
-      const manager = this.findUserById(assignedTo);
+      const manager = await this.findUserById(assignedTo);
       if (manager) {
         assignedToName = manager.name;
         whatsApp = manager.whatsApp;
       }
     }
 
-    const newTask: Task = {
-      id: 'task-' + crypto.randomUUID(),
-      title,
-      description,
-      status: 'pending',
-      assignedTo,
-      assignedToName,
-      whatsApp,
-      createdBy,
-      creatorRole,
-      scheduledDate,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    const id = 'task-' + crypto.randomUUID();
+    const status = 'pending';
+    const createdAt = new Date().toISOString();
+    const updatedAt = new Date().toISOString();
 
-    this.data.tasks.push(newTask);
-    this.save();
-    return newTask;
+    await this.pool.query(
+      'INSERT INTO tasks (id, title, description, status, "assignedTo", "assignedToName", "whatsApp", "createdBy", "creatorRole", "scheduledDate", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+      [id, title, description, status, assignedTo, assignedToName, whatsApp, createdBy, creatorRole, scheduledDate, createdAt, updatedAt]
+    );
+
+    return {
+      id, title, description, status, assignedTo, assignedToName, whatsApp, createdBy, creatorRole, scheduledDate, createdAt, updatedAt
+    };
   }
 
-  public updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'assignedTo' | 'scheduledDate'>>): Task {
-    const taskIndex = this.data.tasks.findIndex(t => t.id === id);
-    if (taskIndex === -1) {
-      throw new Error('Task not found.');
-    }
+  public async updateTask(id: string, updates: Partial<Pick<Task, 'title' | 'description' | 'status' | 'assignedTo' | 'scheduledDate'>>): Promise<Task> {
+    const task = await this.findTaskById(id);
+    if (!task) throw new Error('Task not found.');
 
-    const task = this.data.tasks[taskIndex];
     const updatedTask = { ...task, ...updates, updatedAt: new Date().toISOString() };
 
-    // If assignment changed, update manager details
     if (updates.assignedTo !== undefined) {
       if (updates.assignedTo === null) {
         updatedTask.assignedToName = null;
         updatedTask.whatsApp = null;
       } else {
-        const manager = this.findUserById(updates.assignedTo);
+        const manager = await this.findUserById(updates.assignedTo);
         if (manager) {
           updatedTask.assignedToName = manager.name;
           updatedTask.whatsApp = manager.whatsApp;
@@ -273,17 +228,16 @@ class Database {
       }
     }
 
-    this.data.tasks[taskIndex] = updatedTask;
-    this.save();
+    await this.pool.query(
+      'UPDATE tasks SET title=$1, description=$2, status=$3, "assignedTo"=$4, "assignedToName"=$5, "whatsApp"=$6, "scheduledDate"=$7, "updatedAt"=$8 WHERE id=$9',
+      [updatedTask.title, updatedTask.description, updatedTask.status, updatedTask.assignedTo, updatedTask.assignedToName, updatedTask.whatsApp, updatedTask.scheduledDate, updatedTask.updatedAt, id]
+    );
+
     return updatedTask;
   }
 
-  public deleteTask(id: string) {
-    const originalLength = this.data.tasks.length;
-    this.data.tasks = this.data.tasks.filter(t => t.id !== id);
-    if (this.data.tasks.length !== originalLength) {
-      this.save();
-    }
+  public async deleteTask(id: string) {
+    await this.pool.query('DELETE FROM tasks WHERE id = $1', [id]);
   }
 }
 

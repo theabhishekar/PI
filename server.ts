@@ -46,6 +46,8 @@ interface AuthenticatedRequest extends Request {
 }
 
 async function startServer() {
+  await dbInstance.init();
+  
   const app = express();
   const PORT = 3000;
 
@@ -53,28 +55,32 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Authorization Middleware
-  const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Auth token required' });
-      return;
-    }
+  const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Auth token required' });
+        return;
+      }
 
-    const token = authHeader.substring(7);
-    const decoded = verifyToken(token);
-    if (!decoded) {
-      res.status(401).json({ error: 'Invalid or expired credentials' });
-      return;
-    }
+      const token = authHeader.substring(7);
+      const decoded = verifyToken(token);
+      if (!decoded) {
+        res.status(401).json({ error: 'Invalid or expired credentials' });
+        return;
+      }
 
-    const user = dbInstance.findUserById(decoded.userId);
-    if (!user) {
-      res.status(401).json({ error: 'User.record not found' });
-      return;
-    }
+      const user = await dbInstance.findUserById(decoded.userId);
+      if (!user) {
+        res.status(401).json({ error: 'User.record not found' });
+        return;
+      }
 
-    req.user = user;
-    next();
+      req.user = user;
+      next();
+    } catch (e) {
+      res.status(500).json({ error: 'Authentication error' });
+    }
   };
 
   // Admin-only Access Middleware
@@ -89,36 +95,40 @@ async function startServer() {
   // --- API Routes ---
 
   // Auth: Login
-  app.post("/api/auth/login", (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      res.status(400).json({ error: "Email and password are required" });
-      return;
-    }
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        res.status(400).json({ error: "Email and password are required" });
+        return;
+      }
 
-    const userRecord = dbInstance.findUserByEmail(email);
-    if (!userRecord) {
-      res.status(400).json({ error: "Invalid credentials" });
-      return;
-    }
+      const userRecord = await dbInstance.findUserByEmail(email);
+      if (!userRecord) {
+        res.status(400).json({ error: "Invalid credentials" });
+        return;
+      }
 
-    const incomingHash = hashPassword(password, userRecord.salt);
-    if (incomingHash !== userRecord.passwordHash) {
-      res.status(400).json({ error: "Invalid credentials" });
-      return;
-    }
+      const incomingHash = hashPassword(password, userRecord.salt);
+      if (incomingHash !== userRecord.passwordHash) {
+        res.status(400).json({ error: "Invalid credentials" });
+        return;
+      }
 
-    const token = generateToken(userRecord.id, userRecord.role);
-    res.json({
-      user: {
-        id: userRecord.id,
-        email: userRecord.email,
-        name: userRecord.name,
-        role: userRecord.role,
-        whatsApp: userRecord.whatsApp
-      },
-      token
-    });
+      const token = generateToken(userRecord.id, userRecord.role);
+      res.json({
+        user: {
+          id: userRecord.id,
+          email: userRecord.email,
+          name: userRecord.name,
+          role: userRecord.role,
+          whatsApp: userRecord.whatsApp
+        },
+        token
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Login failed' });
+    }
   });
 
   // Google OAuth Initiate Endpoint
@@ -227,7 +237,7 @@ async function startServer() {
       }
 
       // Provision or find Google user
-      const user = dbInstance.findOrCreateGoogleUser(email, name);
+      const user = await dbInstance.findOrCreateGoogleUser(email, name);
 
       // Generate app session token
       const token = generateToken(user.id, user.role);
@@ -275,25 +285,29 @@ async function startServer() {
   });
 
   // Sandbox Simulated Google Auth for Preview Compatibility
-  app.post("/api/auth/google/sandbox", (req: Request, res: Response) => {
-    const { email, name } = req.body;
-    if (!email) {
-      res.status(400).json({ error: "Email is required for sandbox Google simulation" });
-      return;
+  app.post("/api/auth/google/sandbox", async (req: Request, res: Response) => {
+    try {
+      const { email, name } = req.body;
+      if (!email) {
+        res.status(400).json({ error: "Email is required for sandbox Google simulation" });
+        return;
+      }
+
+      const user = await dbInstance.findOrCreateGoogleUser(email, name || "Google User");
+      const token = generateToken(user.id, user.role);
+
+      res.json({
+        user,
+        token,
+        message: "Google sandbox authorization simulated cleanly"
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Sandbox login failed' });
     }
-
-    const user = dbInstance.findOrCreateGoogleUser(email, name || "Google User");
-    const token = generateToken(user.id, user.role);
-
-    res.json({
-      user,
-      token,
-      message: "Google sandbox authorization simulated cleanly"
-    });
   });
 
   // Auth: Create/Register Manager (Admin-only)
-  app.post("/api/auth/register-manager", authenticate, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/auth/register-manager", authenticate, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     const { email, password, name, whatsApp } = req.body;
     if (!email || !password || !name || !whatsApp) {
       res.status(400).json({ error: 'All fields (email, password, name, whatsApp) are required' });
@@ -301,7 +315,7 @@ async function startServer() {
     }
 
     try {
-      const newUser = dbInstance.createUser(email, name, 'manager', whatsApp, password);
+      const newUser = await dbInstance.createUser(email, name, 'manager', whatsApp, password);
       res.status(201).json({ user: newUser });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to create manager account' });
@@ -309,27 +323,35 @@ async function startServer() {
   });
 
   // Team List (All authenticated users)
-  app.get("/api/team", authenticate, (req: AuthenticatedRequest, res: Response) => {
-    const users = dbInstance.getUsers();
-    const team = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
-    res.json(team);
+  app.get("/api/team", authenticate, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const users = await dbInstance.getUsers();
+      const team = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
+      res.json(team);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch team' });
+    }
   });
 
   // Users List (Admin-only)
-  app.get("/api/users", authenticate, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
-    const users = dbInstance.getUsers();
-    res.json(users);
+  app.get("/api/users", authenticate, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const users = await dbInstance.getUsers();
+      res.json(users);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
   });
 
   // Update User Profile
-  app.put("/api/users/profile", authenticate, (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/users/profile", authenticate, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) {
          res.status(401).json({ error: "Unauthorized" });
          return;
       }
       const { name, whatsApp } = req.body;
-      const updatedUser = dbInstance.updateUser(req.user.id, name, whatsApp);
+      const updatedUser = await dbInstance.updateUser(req.user.id, name, whatsApp);
       res.json({ success: true, user: updatedUser });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to update profile' });
@@ -337,27 +359,35 @@ async function startServer() {
   });
 
   // Delete User Profile (Admin-only)
-  app.delete("/api/users/:id", authenticate, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
-    const { id } = req.params;
-    if (id === req.user?.id) {
-      res.status(400).json({ error: 'Admins cannot delete their own profile.' });
-      return;
+  app.delete("/api/users/:id", authenticate, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (id === req.user?.id) {
+        res.status(400).json({ error: 'Admins cannot delete their own profile.' });
+        return;
+      }
+      await dbInstance.deleteUser(id);
+      res.json({ success: true, message: 'User deleted safely.' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete user' });
     }
-    dbInstance.deleteUser(id);
-    res.json({ success: true, message: 'User deleted safely.' });
   });
 
   // Get Tasks (Admin gets all, Managers get assigned + self-created)
-  app.get("/api/tasks", authenticate, (req: AuthenticatedRequest, res: Response) => {
-    const allTasks = dbInstance.getTasks();
-    const user = req.user!;
+  app.get("/api/tasks", authenticate, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const allTasks = await dbInstance.getTasks();
+      const user = req.user!;
 
-    if (user.role === 'admin') {
-      res.json(allTasks);
-    } else {
-      // Manager rule: only items assigned to them OR created by them
-      const tasks = allTasks.filter(t => t.assignedTo === user.id || t.createdBy === user.id);
-      res.json(tasks);
+      if (user.role === 'admin') {
+        res.json(allTasks);
+      } else {
+        // Manager rule: only items assigned to them OR created by them
+        const tasks = allTasks.filter(t => t.assignedTo === user.id || t.createdBy === user.id);
+        res.json(tasks);
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch tasks' });
     }
   });
 
@@ -380,7 +410,8 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      const managersConfig = dbInstance.getUsers().filter(u=>u.role==='manager').map(u=>({id: u.id, name: u.name}));
+      const users = await dbInstance.getUsers();
+      const managersConfig = users.filter(u=>u.role==='manager').map(u=>({id: u.id, name: u.name}));
       
       const currentDate = new Date().toISOString().split('T')[0];
       const systemInstruction = `Extract task details from this input.
@@ -425,7 +456,7 @@ async function startServer() {
       const jsonStr = response.text || "{}";
       const parsed = JSON.parse(jsonStr);
 
-      const newTask = dbInstance.createTask(
+      const newTask = await dbInstance.createTask(
         parsed.title || "Voice Task",
         parsed.description || "Voice Description",
         parsed.assignedTo || null,
@@ -442,115 +473,127 @@ async function startServer() {
   });
 
   // Create Task
-  app.post("/api/tasks", authenticate, (req: AuthenticatedRequest, res: Response) => {
-    const { title, description, assignedTo, scheduledDate } = req.body;
-    if (!title || !description) {
-      res.status(400).json({ error: 'Title and Description are required' });
-      return;
+  app.post("/api/tasks", authenticate, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { title, description, assignedTo, scheduledDate } = req.body;
+      if (!title || !description) {
+        res.status(400).json({ error: 'Title and Description are required' });
+        return;
+      }
+
+      const sUser = req.user!;
+      let targetAssignee = assignedTo;
+
+      if (sUser.role === 'manager') {
+        // Manager rule: "Manager can create their own task for them self only"
+        targetAssignee = sUser.id;
+      }
+
+      const finalScheduledDate = scheduledDate || new Date().toISOString().split('T')[0];
+      const task = await dbInstance.createTask(title, description, targetAssignee, sUser.id, sUser.role, finalScheduledDate);
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create task' });
     }
-
-    const sUser = req.user!;
-    let targetAssignee = assignedTo;
-
-    if (sUser.role === 'manager') {
-      // Manager rule: "Manager can create their own task for them self only"
-      targetAssignee = sUser.id;
-    }
-
-    const finalScheduledDate = scheduledDate || new Date().toISOString().split('T')[0];
-    const task = dbInstance.createTask(title, description, targetAssignee, sUser.id, sUser.role, finalScheduledDate);
-    res.status(201).json(task);
   });
 
   // Update Task
-  app.put("/api/tasks/:id", authenticate, (req: AuthenticatedRequest, res: Response) => {
-    const { id } = req.params;
-    const { title, description, status, assignedTo, scheduledDate } = req.body;
-    const user = req.user!;
+  app.put("/api/tasks/:id", authenticate, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { title, description, status, assignedTo, scheduledDate } = req.body;
+      const user = req.user!;
 
-    const task = dbInstance.findTaskById(id);
-    if (!task) {
-      res.status(404).json({ error: 'Task not found' });
-      return;
-    }
+      const task = await dbInstance.findTaskById(id);
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
+      }
 
-    // Role-based capability validation
-    if (user.role === 'admin') {
-      // Admin has full control
-      const updates: any = {};
-      if (title !== undefined) updates.title = title;
-      if (description !== undefined) updates.description = description;
-      if (status !== undefined) updates.status = status as TaskStatus;
-      if (assignedTo !== undefined) updates.assignedTo = assignedTo;
-      if (scheduledDate !== undefined) updates.scheduledDate = scheduledDate;
-
-      const updated = dbInstance.updateTask(id, updates);
-      res.json(updated);
-    } else {
-      // Manager update rules
-      const isSelfCreated = task.createdBy === user.id && task.creatorRole === 'manager';
-
-      if (isSelfCreated) {
-        // Since it's self-created for themselves, they can fully edit it
+      // Role-based capability validation
+      if (user.role === 'admin') {
+        // Admin has full control
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (description !== undefined) updates.description = description;
         if (status !== undefined) updates.status = status as TaskStatus;
+        if (assignedTo !== undefined) updates.assignedTo = assignedTo;
         if (scheduledDate !== undefined) updates.scheduledDate = scheduledDate;
-        // Self created tasks are locked assigned to themselves
-        updates.assignedTo = user.id;
 
-        const updated = dbInstance.updateTask(id, updates);
+        const updated = await dbInstance.updateTask(id, updates);
         res.json(updated);
       } else {
-        // It's assigned by Admin to Manager
-        // Rule: "Manager can not delete or edit the assigned task he can only update the status"
-        if (task.assignedTo !== user.id) {
-          res.status(403).json({ error: 'Permission denied: Task is not assigned to you.' });
-          return;
-        }
+        // Manager update rules
+        const isSelfCreated = task.createdBy === user.id && task.creatorRole === 'manager';
 
-        // Only allow status updates
-        if (title !== undefined || description !== undefined || assignedTo !== undefined) {
-          res.status(403).json({ error: 'Permission denied: Managers can only update status of assigned tasks.' });
-          return;
-        }
+        if (isSelfCreated) {
+          // Since it's self-created for themselves, they can fully edit it
+          const updates: any = {};
+          if (title !== undefined) updates.title = title;
+          if (description !== undefined) updates.description = description;
+          if (status !== undefined) updates.status = status as TaskStatus;
+          if (scheduledDate !== undefined) updates.scheduledDate = scheduledDate;
+          // Self created tasks are locked assigned to themselves
+          updates.assignedTo = user.id;
 
-        if (status === undefined) {
-          res.status(400).json({ error: 'Nothing to update (only status changes are permitted for assigned tasks)' });
-          return;
-        }
+          const updated = await dbInstance.updateTask(id, updates);
+          res.json(updated);
+        } else {
+          // It's assigned by Admin to Manager
+          // Rule: "Manager can not delete or edit the assigned task he can only update the status"
+          if (task.assignedTo !== user.id) {
+            res.status(403).json({ error: 'Permission denied: Task is not assigned to you.' });
+            return;
+          }
 
-        const updated = dbInstance.updateTask(id, { status: status as TaskStatus });
-        res.json(updated);
+          // Only allow status updates
+          if (title !== undefined || description !== undefined || assignedTo !== undefined) {
+            res.status(403).json({ error: 'Permission denied: Managers can only update status of assigned tasks.' });
+            return;
+          }
+
+          if (status === undefined) {
+            res.status(400).json({ error: 'Nothing to update (only status changes are permitted for assigned tasks)' });
+            return;
+          }
+
+          const updated = await dbInstance.updateTask(id, { status: status as TaskStatus });
+          res.json(updated);
+        }
       }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update task' });
     }
   });
 
   // Delete Task
-  app.delete("/api/tasks/:id", authenticate, (req: AuthenticatedRequest, res: Response) => {
-    const { id } = req.params;
-    const user = req.user!;
+  app.delete("/api/tasks/:id", authenticate, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
 
-    const task = dbInstance.findTaskById(id);
-    if (!task) {
-      res.status(404).json({ error: 'Task not found' });
-      return;
-    }
-
-    if (user.role === 'admin') {
-      // Admins have full access to delete
-      dbInstance.deleteTask(id);
-      res.json({ success: true, message: 'Task deleted successfully.' });
-    } else {
-      // Manager can delete if self-created
-      const isSelfCreated = task.createdBy === user.id && task.creatorRole === 'manager';
-      if (isSelfCreated) {
-        dbInstance.deleteTask(id);
-        res.json({ success: true, message: 'Self task deleted successfully.' });
-      } else {
-        res.status(403).json({ error: 'Permission denied: Managers cannot delete assigned tasks.' });
+      const task = await dbInstance.findTaskById(id);
+      if (!task) {
+        res.status(404).json({ error: 'Task not found' });
+        return;
       }
+
+      if (user.role === 'admin') {
+        // Admins have full access to delete
+        await dbInstance.deleteTask(id);
+        res.json({ success: true, message: 'Task deleted successfully.' });
+      } else {
+        // Manager can delete if self-created
+        const isSelfCreated = task.createdBy === user.id && task.creatorRole === 'manager';
+        if (isSelfCreated) {
+          await dbInstance.deleteTask(id);
+          res.json({ success: true, message: 'Self task deleted successfully.' });
+        } else {
+          res.status(403).json({ error: 'Permission denied: Managers cannot delete assigned tasks.' });
+        }
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete task' });
     }
   });
 
