@@ -919,9 +919,8 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                           </div>
                         </div>
                       )}
-                      
-                      <div style={{ display: showEmailLoginForm ? "block" : "none" }} className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-[#6135BF]">
-                        <button onClick={() => setShowEmailLoginForm(false)} className="absolute top-8 left-6 text-white hover:text-zinc-200 text-sm font-bold flex items-center gap-2">
+                      <div style={{ display: showEmailLoginForm ? "flex" : "none" }} className="absolute inset-0 z-10 flex-col items-center justify-center p-6 bg-[#6135BF]">
+                        <button onClick={() => setShowEmailLoginForm(false)} className="absolute top-12 left-6 text-white hover:text-zinc-200 text-sm font-bold flex items-center gap-2">
                           <span>←</span> BACK
                         </button>
                         <div className="flex flex-col items-center justify-center -mt-8 w-full max-w-[280px]">
