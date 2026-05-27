@@ -162,7 +162,7 @@ export default function App() {
     if (!token) return;
     setLoadingTasks(true);
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/tasks", {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -186,7 +186,7 @@ export default function App() {
     if (!token || user?.role !== "admin") return;
     setLoadingManagers(true);
     try {
-      const res = await fetch("/api/users", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/users", {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -211,7 +211,7 @@ export default function App() {
     if (!token) return;
     setIsUpdatingProfile(true);
     try {
-      const res = await fetch("/api/users/profile", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/users/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ name: profileName, whatsApp: profileWhatsApp })
@@ -262,7 +262,7 @@ export default function App() {
     setAuthLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: loginEmail, password: loginPassword })
@@ -337,7 +337,7 @@ export default function App() {
   const triggerGoogleSandboxSimulation = async (email: string) => {
     setAuthLoading(true);
     try {
-      const res = await fetch("/api/auth/google/sandbox", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/auth/google/sandbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -371,7 +371,7 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const response = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
+      const response = await fetch(`https://pi-0utt.onrender.com/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
       if (!response.ok) {
         throw new Error("Failed to contact auth endpoint");
       }
@@ -469,7 +469,7 @@ export default function App() {
   // Inline Quick Changer for Manager list status
   const handleUpdateStatusOnly = async (taskId: string, newStatus: TaskStatus) => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`https://pi-0utt.onrender.com/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -494,7 +494,7 @@ export default function App() {
   // Delete/Cancel task allocations
   const handleDeleteTask = async (taskId: string) => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`https://pi-0utt.onrender.com/api/tasks/${taskId}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -526,7 +526,7 @@ export default function App() {
     setSubmittingMgr(true);
 
     try {
-      const res = await fetch("/api/auth/register-manager", {
+      const res = await fetch("https://pi-0utt.onrender.com/api/auth/register-manager", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -564,7 +564,7 @@ export default function App() {
   // Delete registered manager from layout (Admin only)
   const handleDeleteManager = async (managerId: string, managerName: string) => {
     try {
-      const res = await fetch(`/api/users/${managerId}`, {
+      const res = await fetch(`https://pi-0utt.onrender.com/api/users/${managerId}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -663,7 +663,7 @@ export default function App() {
           showToast("Processing Voice command...", "info");
           
           try {
-            const res = await fetch("/api/voice-agent", {
+            const res = await fetch("https://pi-0utt.onrender.com/api/voice-agent", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
               body: JSON.stringify({ 
