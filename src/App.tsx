@@ -366,6 +366,18 @@ export default function App() {
     }
   }, []);
 
+  // Update body background color for safe areas (notch/home indicator)
+  useEffect(() => {
+    if (!user) {
+      document.body.style.backgroundColor = '#6135BF';
+    } else {
+      document.body.style.backgroundColor = isEmuDarkTheme ? '#09090b' : '#f8fafc';
+    }
+    return () => {
+      document.body.style.backgroundColor = '';
+    };
+  }, [user, isEmuDarkTheme]);
+
   const triggerGoogleSandboxSimulation = async (email: string) => {
     setAuthLoading(true);
     try {
@@ -824,7 +836,7 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
   return (
     <div className={`min-h-[100dvh] w-full flex items-center justify-center font-sans antialiased select-none overflow-x-hidden p-0 sm:p-4 bg-slate-950`}>
       {/* SCREEN RECONSTRUCTED WORKSPACE CONTAINER */}
-      <div className={`w-full max-w-[420px] h-[100dvh] sm:h-[820px] flex flex-col relative sm:rounded-[36px] sm:border-[12px] sm:shadow-2xl overflow-hidden transition-colors ${isEmuDarkTheme ? "bg-[#09090b] text-zinc-100 border-zinc-900" : "bg-[#f8fafc] text-slate-900 border-slate-800"}`}>
+      <div className={`w-full max-w-[420px] h-[100dvh] sm:h-[820px] flex flex-col relative sm:rounded-[36px] sm:border-[12px] sm:shadow-2xl overflow-hidden transition-colors ${!user ? 'bg-[#6135BF] sm:border-slate-800' : isEmuDarkTheme ? "bg-[#09090b] text-zinc-100 border-zinc-900" : "bg-[#f8fafc] text-slate-900 border-slate-800"}`}>
               
               {/* TOP HEADER CONTROLS (App Bar inside simulated OS) */}
               {user && (
@@ -866,7 +878,7 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className={`absolute inset-[3px] rounded-[48px] z-50 overflow-y-auto bg-[#6135BF] p-6 pt-12 ${showEmailLoginForm ? '' : 'overflow-hidden'}`}
+                      className={`absolute inset-0 z-50 overflow-y-auto bg-[#6135BF] p-6 pt-12 ${showEmailLoginForm ? '' : 'overflow-hidden'}`}
                     >
                       {!showEmailLoginForm && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-[#6135BF]">
