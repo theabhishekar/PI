@@ -43,6 +43,9 @@ import {
 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { motion, AnimatePresence } from "motion/react";
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { User as AppUser, Task, TaskStatus, UserRole } from "./types";
 
 export default function App() {
@@ -308,10 +311,11 @@ export default function App() {
   // Google OAuth flow state & event listeners
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Handle message from Google Auth Popup (Web)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith(".run.app") && !origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+      if (!origin.endsWith(".run.app") && !origin.includes("localhost") && !origin.includes("127.0.0.1") && !origin.includes("onrender.com")) {
         return;
       }
       if (event.data?.type === "OAUTH_AUTH_SUCCESS") {
@@ -332,6 +336,34 @@ export default function App() {
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // Handle Deep Link Redirects (Mobile/Capacitor)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appUrlOpen', (event) => {
+        if (event.url.includes('com.pi.app://callback')) {
+          try {
+            const queryString = event.url.split('?')[1];
+            if (queryString) {
+              const urlParams = new URLSearchParams(queryString);
+              const t = urlParams.get('token');
+              const u = urlParams.get('user');
+              if (t && u) {
+                localStorage.setItem("team_token", t);
+                localStorage.setItem("team_user", u);
+                setToken(t);
+                setUser(JSON.parse(u));
+                showToast("Logged in securely on mobile!", "success");
+                Browser.close();
+              }
+            }
+          } catch (e) {
+            console.error("Failed to handle deep link", e);
+          }
+        }
+      });
+    }
   }, []);
 
   const triggerGoogleSandboxSimulation = async (email: string) => {
@@ -371,20 +403,29 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const response = await fetch(`https://pi-0utt.onrender.com/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
+      let originStr = encodeURIComponent(window.location.origin);
+      if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+        originStr = "com.pi.app://";
+      }
+
+      const response = await fetch(`https://pi-0utt.onrender.com/api/auth/google/url?origin=${originStr}`);
       if (!response.ok) {
         throw new Error("Failed to contact auth endpoint");
       }
       const data = await response.json();
       
       if (data.configured && data.url) {
-        const popup = window.open(
-          data.url,
-          "google_oauth_popup",
-          "width=500,height=600,status=no,resizable=yes,scrollbars=yes"
-        );
-        if (!popup) {
-          showToast("Popup blocked! Please allow popups for this page.", "error");
+        if (Capacitor.isNativePlatform()) {
+          await Browser.open({ url: data.url });
+        } else {
+          const popup = window.open(
+            data.url,
+            "google_oauth_popup",
+            "width=500,height=600,status=no,resizable=yes,scrollbars=yes"
+          );
+          if (!popup) {
+            showToast("Popup blocked! Please allow popups for this page.", "error");
+          }
         }
       } else {
         // Fallback to beautiful Sandbox authentication popup/modal 

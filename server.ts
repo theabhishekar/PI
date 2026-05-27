@@ -242,6 +242,14 @@ async function startServer() {
       // Generate app session token
       const token = generateToken(user.id, user.role);
 
+      // Deep Link Redirect for Mobile (Capacitor)
+      if (baseOrigin === "com.pi.app://") {
+        const redirectUrl = `com.pi.app://callback?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`;
+        res.redirect(302, redirectUrl);
+        return;
+      }
+
+      // Web Popup Callback
       res.send(`
         <html>
           <head>
