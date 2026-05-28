@@ -111,6 +111,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [showEmailLoginForm, setShowEmailLoginForm] = useState(false);
+  const [isLoginView, setIsLoginView] = useState(false);
 
   // TOAST / Notification States inside the Emulator
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
@@ -463,7 +464,8 @@ export default function App() {
     setSubmittingTask(true);
 
     const isEditing = !!editingTask;
-    const url = isEditing ? `/api/tasks/${editingTask.id}` : "/api/tasks";
+    const baseUrl = "https://pi-0utt.onrender.com";
+    const url = isEditing ? `${baseUrl}/api/tasks/${editingTask.id}` : `${baseUrl}/api/tasks`;
     const method = isEditing ? "PUT" : "POST";
 
     const payload: any = {
@@ -920,12 +922,14 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                         </div>
                       )}
                       <div style={{ display: showEmailLoginForm ? "flex" : "none" }} className="absolute inset-0 z-10 flex-col items-center justify-center p-6 bg-[#6135BF]">
-                        <button onClick={() => setShowEmailLoginForm(false)} className="absolute top-12 left-6 text-white hover:text-zinc-200 text-sm font-bold flex items-center gap-2">
+                        <button onClick={() => { setShowEmailLoginForm(false); setIsLoginView(false); }} className="absolute top-12 left-6 text-white hover:text-zinc-200 text-sm font-bold flex items-center gap-2">
                           <span>←</span> BACK
                         </button>
                         <div className="flex flex-col items-center justify-center -mt-8 w-full max-w-[280px]">
                           <h1 className="text-white text-[96px] leading-[1] font-serif font-extrabold mb-8 tracking-tighter" style={{ fontFamily: 'Georgia, serif' }}>PI</h1>
-                          <h2 className="text-white font-bold text-[22px] mb-8 font-sans tracking-tight leading-tight text-center">Create your account</h2>
+                          <h2 className="text-white font-bold text-[22px] mb-8 font-sans tracking-tight leading-tight text-center">
+                            {isLoginView ? "Log in to your account" : "Create your account"}
+                          </h2>
                           
                           <form onSubmit={handleLogin} className="w-full space-y-4 flex flex-col items-center">
                             <input 
@@ -937,16 +941,18 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                               className="w-full bg-white text-center text-black font-bold py-3.5 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-white placeholder:text-black placeholder:font-bold"
                             />
                             
-                            <div className="relative w-full">
-                              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-black font-bold text-sm select-none pointer-events-none">+91</span>
-                              <input 
-                                type="tel"
-                                value={loginPhone}
-                                onChange={e => setLoginPhone(e.target.value)}
-                                placeholder="Phone number"
-                                className="w-full bg-white text-center text-black font-bold py-3.5 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-white placeholder:text-black placeholder:font-bold px-12"
-                              />
-                            </div>
+                            {!isLoginView && (
+                              <div className="relative w-full">
+                                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-black font-bold text-sm select-none pointer-events-none">+91</span>
+                                <input
+                                  type="tel"
+                                  value={loginPhone}
+                                  onChange={e => setLoginPhone(e.target.value)}
+                                  placeholder="Phone number"
+                                  className="w-full bg-white text-center text-black font-bold py-3.5 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-white placeholder:text-black placeholder:font-bold px-12"
+                                />
+                              </div>
+                            )}
                             
                             <div className="relative w-full">
                               <input 
@@ -966,22 +972,24 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                               </button>
                             </div>
                             
-                            <div className="relative w-full">
-                              <input 
-                                type={showRePassword ? "text" : "password"}
-                                value={loginRePassword}
-                                onChange={e => setLoginRePassword(e.target.value)}
-                                placeholder="Re enter Password"
-                                className="w-full bg-white text-center text-black font-bold py-3.5 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-white placeholder:text-black placeholder:font-bold px-12"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowRePassword(!showRePassword)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-black transition-colors focus:outline-none"
-                              >
-                                {showRePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                              </button>
-                            </div>
+                            {!isLoginView && (
+                              <div className="relative w-full">
+                                <input
+                                  type={showRePassword ? "text" : "password"}
+                                  value={loginRePassword}
+                                  onChange={e => setLoginRePassword(e.target.value)}
+                                  placeholder="Re enter Password"
+                                  className="w-full bg-white text-center text-black font-bold py-3.5 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-white placeholder:text-black placeholder:font-bold px-12"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowRePassword(!showRePassword)}
+                                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-black transition-colors focus:outline-none"
+                                >
+                                  {showRePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                              </div>
+                            )}
                             
                             {authError && (
                               <div className="bg-rose-500/10 border-l-4 border-rose-500 p-3 rounded-lg flex gap-2 text-rose-500 text-xs font-semibold w-full bg-white/90 shadow-lg">
@@ -995,7 +1003,7 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                               disabled={authLoading}
                               className="w-auto px-8 bg-white text-black font-bold py-3.5 rounded-full text-lg mt-4 mb-2 hover:opacity-90 transition-opacity active:scale-[0.98] disabled:opacity-50"
                             >
-                              {authLoading ? '...' : 'Sign up'}
+                              {authLoading ? '...' : (isLoginView ? 'Log in' : 'Sign up')}
                             </button>
                             
                             <div className="flex items-center w-full justify-center gap-4 py-2 opacity-90 my-2">
@@ -1004,12 +1012,23 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                               <div className="h-px bg-white flex-1 min-w-[30px]"></div>
                             </div>
                             
-                            <div className="text-center text-white mt-1">
-                              <div className="text-lg font-bold">Already have an account</div>
-                              <button type="button" onClick={() => setShowEmailLoginForm(false)} className="text-xl font-bold mt-1.5 focus:outline-none active:scale-[0.98]">
-                                Log in
-                              </button>
-                            </div>
+                            {isLoginView ? (
+                              <div className="text-center text-white mt-1">
+                                <div className="text-lg font-bold">Don't have an account</div>
+                                <button type="button" onClick={() => setIsLoginView(false)} className="text-xl font-bold mt-1.5 focus:outline-none active:scale-[0.98]">
+                                  Sign up
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="text-center text-white mt-1">
+                                <button type="button" onClick={() => setIsLoginView(true)} className="text-lg font-bold focus:outline-none active:scale-[0.98]">
+                                  Already have an account
+                                </button>
+                                <button type="button" onClick={() => setShowEmailLoginForm(false)} className="text-xl font-bold mt-1.5 focus:outline-none active:scale-[0.98] block w-full">
+                                  Log in
+                                </button>
+                              </div>
+                            )}
                             
                             {/* Hidden predefined login options for testing purposes mapped onto UI actions */}
                             <div className="mt-8 opacity-0 pointer-events-none absolute" aria-hidden="true">
@@ -2192,7 +2211,7 @@ Status:[ ${task.status.toUpperCase().replace("_", " ")} ]`;
                                   <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">{mgrTasks.length} Allocated Tasks</p>
                                 </div>
                               </div>
-                              <button 
+                              <button
                                 onClick={() => setViewManagerTasksId(null)}
                                 className={`p-1.5 rounded-full hover:bg-zinc-500/10 transition-all ${isEmuDarkTheme ? 'text-zinc-400' : 'text-slate-500'}`}
                               >
