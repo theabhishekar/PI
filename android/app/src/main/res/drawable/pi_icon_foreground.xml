@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#5A34CC"
+        android:pathData="M112,0 L400,0 C461.85,0 512,50.15 512,112 L512,400 C512,461.85 461.85,512 400,512 L112,512 C50.15,512 0,461.85 0,400 L0,112 C0,50.15 50.15,0 112,0 Z" />
+    <!-- PI Text - roughly centered based on the SVG -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M150,180 L230,180 L230,360 L150,360 Z M280,180 L360,180 L360,360 L280,360 Z" />
+</vector>

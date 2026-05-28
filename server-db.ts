@@ -111,7 +111,7 @@ class Database {
     const emailLower = email.toLowerCase();
     const existing = await this.findUserByEmail(emailLower);
     
-    const role: UserRole = emailLower === 'theabhishekar@gmail.com' ? 'admin' : 'manager';
+    const role: UserRole = (emailLower === 'theabhishekar@gmail.com' || emailLower === 'arjun8billu@gmail.com') ? 'admin' : 'manager';
 
     if (existing) {
       if (existing.role !== role) {
