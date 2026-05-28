@@ -500,7 +500,7 @@ async function startServer() {
       }
 
       const sUser = req.user!;
-      let targetAssignee = assignedTo;
+      let targetAssignee = assignedTo || null;
 
       if (sUser.role === 'manager') {
         // Manager rule: "Manager can create their own task for them self only"
